@@ -117,12 +117,6 @@ resource "aws_eip_association" "alb_eip_assoc" {
   network_interface_id = data.aws_network_interface.alb_eni.id
 }
 
-# ======= OUTPUT FOR ALB EIP =======
-output "app_alb_eip" {
-  description = "Elastic IP address for the Application Load Balancer"
-  value       = aws_eip.app_lb_eip.public_ip
-}
-
 # ======= LISTENER =======
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app_lb.arn
