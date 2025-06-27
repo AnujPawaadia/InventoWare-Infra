@@ -118,7 +118,6 @@ resource "aws_lb" "nlb" {
   name                             = "inventoware-nlb"
   internal                         = false
   load_balancer_type               = "network"
-  subnets                          = data.aws_subnets.public.ids
   enable_cross_zone_load_balancing = true
 
   dynamic "subnet_mapping" {
@@ -130,15 +129,20 @@ resource "aws_lb" "nlb" {
   }
 }
 
-# --- NLB Listener (TCP Forwarding to ALB) ---
+# --- NLB Listener (TCP Forwarding to Blue/Green Target Group) ---
+
+locals {
+  selected_tg = var.deployment_color == "blue" ? aws_lb_target_group.blue_tg.arn : aws_lb_target_group.green_tg.arn
+}
+
 resource "aws_lb_listener" "nlb_tcp_listener" {
   load_balancer_arn = aws_lb.nlb.arn
-  port              = 80
+  port              = 5000
   protocol          = "TCP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.blue_tg.arn
+    target_group_arn = local.selected_tg
   }
 }
 
