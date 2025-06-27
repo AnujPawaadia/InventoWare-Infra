@@ -65,7 +65,7 @@ EOF
 resource "aws_lb_target_group" "blue_tg" {
   name        = "inventoware-blue-tg"
   port        = 5000
-  protocol    = "HTTP"
+  protocol    = "TCP"
   vpc_id      = data.aws_vpc.default.id
   target_type = "instance"
 
@@ -78,7 +78,7 @@ resource "aws_lb_target_group" "blue_tg" {
 resource "aws_lb_target_group" "green_tg" {
   name        = "inventoware-green-tg"
   port        = 5000
-  protocol    = "HTTP"
+  protocol    = "TCP"
   vpc_id      = data.aws_vpc.default.id
   target_type = "instance"
 
@@ -97,10 +97,10 @@ resource "aws_lb" "app_alb" {
   security_groups    = [aws_security_group.app_sg.id]
 }
 
-resource "aws_lb_listener" "http" {
+resource "aws_lb_listener" "TCP" {
   load_balancer_arn = aws_lb.app_alb.arn
   port              = 80
-  protocol          = "HTTP"
+  protocol          = "TCP"
 
   default_action {
     type             = "forward"
