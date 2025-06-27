@@ -50,7 +50,7 @@ resource "aws_launch_template" "app_template" {
   instance_type = "t3.medium"
   key_name      = var.key_name
 
-  user_data = base64encode(<<EOF
+  user_data_base64 = base64encode(<<EOF
 #!/bin/bash
 sudo apt-get update -y
 sudo apt-get install docker.io -y
@@ -163,7 +163,7 @@ resource "aws_instance" "monitoring_node" {
     Name = "InventoWare-Monitoring"
   }
 
-  user_data = base64encode(<<EOF
+  user_data_base64 = base64encode(<<EOF
 #!/bin/bash
 sudo apt-get update -y
 sudo apt-get install docker.io -y
