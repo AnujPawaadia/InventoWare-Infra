@@ -8,16 +8,40 @@
     - thanos
     - loki
     - grafana
+    - grafana/dashboards
+    - grafana/provisioning/dashboards
 
-- name: Copy config files
+- name: Copy monitoring config files
   copy:
     src: "{{ item }}"
     dest: "/opt/{{ item | basename | regex_replace('\..*$', '') }}/{{ item }}"
   with_items:
-    - prometheus.yml
     - thanos-config.yaml
     - loki-config.yaml
     - grafana-datasource.yaml
+
+- name: Copy Grafana dashboard JSONs
+  copy:
+    src: node-dashboard.json
+    dest: /opt/grafana/dashboards/node-dashboard.json
+
+- name: Provision Grafana dashboard loader config
+  copy:
+    content: |
+      apiVersion: 1
+      providers:
+        - name: 'default'
+          orgId: 1
+          folder: ''
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards
+    dest: /opt/grafana/provisioning/dashboards/dashboard.yaml
+
+- name: Template Prometheus config with blue/green IPs
+  template:
+    src: prometheus.yml.j2
+    dest: /opt/prometheus/prometheus.yml
 
 - name: Run Prometheus container
   docker_container:
@@ -57,4 +81,11 @@
       - "3000:3000"
     volumes:
       - /opt/grafana/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - /opt/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - /opt/grafana/dashboards:/var/lib/grafana/dashboards
     restart_policy: always
+
+- name: Restart Prometheus to reload config
+  docker_container:
+    name: prometheus
+    state: restarted

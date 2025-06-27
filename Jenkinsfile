@@ -1,12 +1,17 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(name: 'DEPLOYMENT_COLOR', choices: ['blue', 'green'], description: 'Choose deployment color')
+    }
+
     environment {
         TF_DIR = 'infra/terraform'
         APP_DIR = 'app/invento-app'
         SKIP_TF = 'false'
         REPORT_DIR = 'reports'
         ANSIBLE_DIR = 'infra/ansible'
+        DEPLOY_COLOR = "${params.DEPLOYMENT_COLOR}"
     }
 
     stages {
@@ -26,10 +31,10 @@ pipeline {
             }
         }
 
-        stage('🧭 Check Existing Infra') {
+        stage('🧭 Check Existing Infra and Start if Stopped') {
             steps {
                 script {
-                    def instanceCheck = sh(
+                    def instanceIds = sh(
                         script: '''
                             docker run --rm \
                               -v $HOME/.aws:/root/.aws \
@@ -41,11 +46,35 @@ pipeline {
                         ''',
                         returnStdout: true
                     ).trim()
-                    if (instanceCheck) {
-                        echo "✅ Instance found: ${instanceCheck} — Skipping Terraform."
+
+                    if (instanceIds) {
+                        echo "✅ Instances found: ${instanceIds}"
+                        def stoppedInstances = sh(
+                            script: """
+                                docker run --rm \
+                                  -v $HOME/.aws:/root/.aws \
+                                  amazon/aws-cli ec2 describe-instance-status \
+                                  --instance-ids ${instanceIds} \
+                                  --region eu-north-1 \
+                                  --query "InstanceStatuses[?InstanceState.Name!='running'].InstanceId" \
+                                  --output text
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        if (stoppedInstances) {
+                            echo "⏯️ Starting stopped instances: ${stoppedInstances}"
+                            sh """
+                                docker run --rm \
+                                  -v $HOME/.aws:/root/.aws \
+                                  amazon/aws-cli ec2 start-instances \
+                                  --instance-ids ${stoppedInstances} \
+                                  --region eu-north-1
+                            """
+                        }
                         env.SKIP_TF = 'true'
                     } else {
-                        echo "🚧 No existing instance — Proceeding with Terraform."
+                        echo '🚧 No existing instance — Proceeding with Terraform.'
                         env.SKIP_TF = 'false'
                     }
                 }
@@ -114,7 +143,7 @@ pipeline {
         stage('🧪 Unit Tests') {
             when { expression { return false } }
             steps {
-                echo "⏭️ Skipping Unit Tests"
+                echo '⏭️ Skipping Unit Tests'
             }
         }
 
@@ -180,23 +209,28 @@ pipeline {
         }
 
         stage('📦 Run Ansible Provisioning') {
-            steps {
-                dir("${ANSIBLE_DIR}") {
-                    sh '''
-                        if ! command -v ansible-playbook &> /dev/null; then
-                            echo "🔧 Installing Ansible..."
-                            sudo apt update && sudo apt install -y ansible
-                        fi
+    steps {
+        dir("${ANSIBLE_DIR}") {
+            sh '''
+                echo "🔧 Installing prerequisites for Ansible..."
+                sudo apt-get update
+                sudo apt-get install -y python3 python3-venv python3-pip
 
-                        echo "🚀 Running Ansible..."
-                        ansible-playbook -i inventory.ini playbook-blue.yml
-                        ansible-playbook -i inventory.ini playbook-green.yml
-                        ansible-playbook -i inventory.ini playbook-monitoring.yml
-                    '''
-                }
-            }
+                echo "🔧 Creating Ansible virtual environment..."
+                python3 -m venv ansible-venv
+                . ansible-venv/bin/activate
+                pip install --upgrade pip
+                pip install ansible
+
+                echo "🚀 Running Ansible Playbooks..."
+                . ansible-venv/bin/activate
+                ansible-playbook -i inventory.ini playbook-${DEPLOY_COLOR}.yml
+                ansible-playbook -i inventory.ini playbook-monitoring.yml
+            '''
         }
     }
+}
+
 
     post {
         always {
@@ -235,4 +269,5 @@ pipeline {
             )
         }
     }
+}
 }

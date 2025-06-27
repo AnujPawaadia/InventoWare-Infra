@@ -1,4 +1,3 @@
-
 # ======= PROVIDER =======
 provider "aws" {
   region = var.region
@@ -98,6 +97,32 @@ resource "aws_lb" "app_lb" {
   security_groups    = [aws_security_group.app_sg.id]
 }
 
+# ======= EIP for Load Balancer =======
+resource "aws_eip" "app_lb_eip" {
+  domain = "vpc"
+  tags = {
+    Name = "InventoWare-ALB-EIP"
+  }
+}
+
+data "aws_network_interface" "alb_eni" {
+  filter {
+    name   = "description"
+    values = ["ELB ${aws_lb.app_lb.name}"]
+  }
+}
+
+resource "aws_eip_association" "alb_eip_assoc" {
+  allocation_id        = aws_eip.app_lb_eip.id
+  network_interface_id = data.aws_network_interface.alb_eni.id
+}
+
+# ======= OUTPUT FOR ALB EIP =======
+output "app_alb_eip" {
+  description = "Elastic IP address for the Application Load Balancer"
+  value       = aws_eip.app_lb_eip.public_ip
+}
+
 # ======= LISTENER =======
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app_lb.arn
@@ -172,4 +197,3 @@ sudo usermod -aG docker ubuntu
 EOF
   )
 }
-

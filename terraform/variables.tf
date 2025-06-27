@@ -1,14 +1,18 @@
+# variables.tf
 
 variable "region" {
-  default = "eu-north-1"
+  description = "AWS region to deploy resources in"
+  type        = string
+  default     = "eu-north-1"
 }
 
 variable "key_name" {
-  description = "Name of the AWS EC2 Key Pair"
-  default     = "jenkins_invento" 
+  description = "SSH key pair name for EC2 instances"
+  type        = string
 }
 
 variable "deployment_color" {
-  description = "Which target group to route traffic to: blue or green"
+  description = "Which deployment should be active on the load balancer"
+  type        = string
   default     = "blue"
 }

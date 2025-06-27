@@ -1,8 +1,34 @@
-- name: Pull and run InventoWare app container
+---
+- name: Ensure pip and docker SDK are installed
+  apt:
+    name: ["python3-pip"]
+    state: present
+    update_cache: yes
+
+- name: Install Docker Python SDK
+  pip:
+    name: docker
+    executable: pip3
+
+- name: Start Node Exporter
   docker_container:
-    name: inventoware-app
-    image: your-dockerhub-username/inventoware:latest
+    name: node-exporter
+    image: prom/node-exporter
     state: started
     restart_policy: always
     ports:
+      - "9100:9100"
+
+- name: Install community.docker collection
+  ansible.builtin.command: ansible-galaxy collection install community.docker
+  changed_when: false
+
+- name: Pull and run InventoWare app container
+  community.docker.docker_container:
+    name: inventoware-app
+    image: your-dockerhub-user/inventoware-app:latest
+    state: started
+    restart_policy: always
+    published_ports:
       - "5000:5000"
+
