@@ -1,9 +1,9 @@
-# ======= PROVIDER =======
+# main.tf — NLB with EIP and forwarding to ALB
+
 provider "aws" {
   region = var.region
 }
 
-# ======= DATA SOURCES =======
 data "aws_vpc" "default" {
   default = true
 }
@@ -15,7 +15,7 @@ data "aws_subnets" "public" {
   }
 }
 
-# ======= SECURITY GROUP =======
+# --- Security Group ---
 resource "aws_security_group" "app_sg" {
   name        = "app-sg"
   description = "Allow SSH and app access"
@@ -42,10 +42,10 @@ resource "aws_security_group" "app_sg" {
   }
 }
 
-# ======= LAUNCH TEMPLATE =======
+# --- Launch Template ---
 resource "aws_launch_template" "app_template" {
   name_prefix   = "inventoware-template-"
-  image_id      = "ami-0becc523130ac9d5d" # Ubuntu in eu-north-1
+  image_id      = "ami-0becc523130ac9d5d"
   instance_type = "t3.medium"
   key_name      = var.key_name
 
@@ -53,7 +53,7 @@ resource "aws_launch_template" "app_template" {
 #!/bin/bash
 sudo apt-get update -y
 sudo apt-get install docker.io -y
-sudo systemctl start docker
+sudo systemctl enable --now docker
 sudo usermod -aG docker ubuntu
 EOF
   )
@@ -61,7 +61,7 @@ EOF
   vpc_security_group_ids = [aws_security_group.app_sg.id]
 }
 
-# ======= TARGET GROUPS =======
+# --- Target Groups ---
 resource "aws_lb_target_group" "blue_tg" {
   name        = "inventoware-blue-tg"
   port        = 5000
@@ -88,38 +88,17 @@ resource "aws_lb_target_group" "green_tg" {
   }
 }
 
-# ======= LOAD BALANCER =======
-resource "aws_lb" "app_lb" {
-  name               = "inventoware-lb"
+# --- Application Load Balancer (ALB) ---
+resource "aws_lb" "app_alb" {
+  name               = "inventoware-alb"
   internal           = false
   load_balancer_type = "application"
   subnets            = data.aws_subnets.public.ids
   security_groups    = [aws_security_group.app_sg.id]
 }
 
-# ======= EIP for Load Balancer =======
-resource "aws_eip" "app_lb_eip" {
-  domain = "vpc"
-  tags = {
-    Name = "InventoWare-ALB-EIP"
-  }
-}
-
-data "aws_network_interface" "alb_eni" {
-  filter {
-    name   = "description"
-    values = ["ELB ${aws_lb.app_lb.name}"]
-  }
-}
-
-resource "aws_eip_association" "alb_eip_assoc" {
-  allocation_id        = aws_eip.app_lb_eip.id
-  network_interface_id = data.aws_network_interface.alb_eni.id
-}
-
-# ======= LISTENER =======
 resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.app_lb.arn
+  load_balancer_arn = aws_lb.app_alb.arn
   port              = 80
   protocol          = "HTTP"
 
@@ -129,7 +108,41 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# ======= AUTO SCALING GROUPS =======
+# --- Network Load Balancer (NLB) with EIP ---
+resource "aws_eip" "nlb_eip" {
+  count  = length(data.aws_subnets.public.ids)
+  domain = "vpc"
+}
+
+resource "aws_lb" "nlb" {
+  name                             = "inventoware-nlb"
+  internal                         = false
+  load_balancer_type               = "network"
+  subnets                          = data.aws_subnets.public.ids
+  enable_cross_zone_load_balancing = true
+
+  dynamic "subnet_mapping" {
+    for_each = data.aws_subnets.public.ids
+    content {
+      subnet_id     = subnet_mapping.value
+      allocation_id = aws_eip.nlb_eip[subnet_mapping.key].id
+    }
+  }
+}
+
+# --- NLB Listener (TCP Forwarding to ALB) ---
+resource "aws_lb_listener" "nlb_tcp_listener" {
+  load_balancer_arn = aws_lb.nlb.arn
+  port              = 80
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.blue_tg.arn
+  }
+}
+
+# --- Auto Scaling Groups ---
 resource "aws_autoscaling_group" "blue_asg" {
   name                = "inventoware-blue-asg"
   desired_capacity    = 1
@@ -170,7 +183,7 @@ resource "aws_autoscaling_group" "green_asg" {
   }
 }
 
-# ======= MONITORING NODE =======
+# --- Monitoring Node ---
 resource "aws_instance" "monitoring_node" {
   ami                    = "ami-0becc523130ac9d5d"
   instance_type          = "t3.medium"
@@ -182,12 +195,15 @@ resource "aws_instance" "monitoring_node" {
     Name = "InventoWare-Monitoring"
   }
 
-  user_data_base64 = base64encode(<<EOF
+  user_data = <<EOF
 #!/bin/bash
 sudo apt-get update -y
 sudo apt-get install docker.io -y
 sudo systemctl enable --now docker
 sudo usermod -aG docker ubuntu
 EOF
-  )
+}
+
+output "nlb_dns_name" {
+  value = aws_lb.nlb.dns_name
 }
