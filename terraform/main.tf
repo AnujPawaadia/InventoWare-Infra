@@ -50,7 +50,7 @@ resource "aws_launch_template" "app_template" {
   instance_type = "t3.medium"
   key_name      = var.key_name
 
-  user_data_base64 = base64encode(<<EOF
+  user_data = base64encode(<<EOF
 #!/bin/bash
 sudo apt-get update -y
 sudo apt-get install docker.io -y
@@ -112,12 +112,12 @@ resource "aws_lb_listener" "http" {
 
 # ======= AUTO SCALING GROUPS =======
 resource "aws_autoscaling_group" "blue_asg" {
-  name                      = "inventoware-blue-asg"
-  desired_capacity          = 1
-  max_size                  = 2
-  min_size                  = 1
-  target_group_arns         = [aws_lb_target_group.blue_tg.arn]
-  vpc_zone_identifier       = data.aws_subnets.public.ids
+  name                = "inventoware-blue-asg"
+  desired_capacity    = 1
+  max_size            = 2
+  min_size            = 1
+  target_group_arns   = [aws_lb_target_group.blue_tg.arn]
+  vpc_zone_identifier = data.aws_subnets.public.ids
 
   launch_template {
     id      = aws_launch_template.app_template.id
@@ -132,12 +132,12 @@ resource "aws_autoscaling_group" "blue_asg" {
 }
 
 resource "aws_autoscaling_group" "green_asg" {
-  name                      = "inventoware-green-asg"
-  desired_capacity          = 1
-  max_size                  = 2
-  min_size                  = 1
-  target_group_arns         = [aws_lb_target_group.green_tg.arn]
-  vpc_zone_identifier       = data.aws_subnets.public.ids
+  name                = "inventoware-green-asg"
+  desired_capacity    = 1
+  max_size            = 2
+  min_size            = 1
+  target_group_arns   = [aws_lb_target_group.green_tg.arn]
+  vpc_zone_identifier = data.aws_subnets.public.ids
 
   launch_template {
     id      = aws_launch_template.app_template.id

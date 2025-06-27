@@ -1,0 +1,6 @@
+- name: Setup Monitoring Stack (Prometheus, Thanos, Grafana, Loki)
+  hosts: monitoring
+  become: true
+  roles:
+    - common
+    - monitoring

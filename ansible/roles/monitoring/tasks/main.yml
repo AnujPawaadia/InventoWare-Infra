@@ -1,0 +1,60 @@
+- name: Create directories for configs
+  file:
+    path: "/opt/{{ item }}"
+    state: directory
+    recurse: yes
+  loop:
+    - prometheus
+    - thanos
+    - loki
+    - grafana
+
+- name: Copy config files
+  copy:
+    src: "{{ item }}"
+    dest: "/opt/{{ item | basename | regex_replace('\..*$', '') }}/{{ item }}"
+  with_items:
+    - prometheus.yml
+    - thanos-config.yaml
+    - loki-config.yaml
+    - grafana-datasource.yaml
+
+- name: Run Prometheus container
+  docker_container:
+    name: prometheus
+    image: prom/prometheus
+    volumes:
+      - /opt/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart_policy: always
+
+- name: Run Thanos Sidecar
+  docker_container:
+    name: thanos-sidecar
+    image: improbable/thanos:latest
+    command: sidecar --tsdb.path=/prometheus --prometheus.url=http://localhost:9090
+    volumes:
+      - /opt/prometheus:/prometheus
+    restart_policy: always
+
+- name: Run Loki container
+  docker_container:
+    name: loki
+    image: grafana/loki
+    command: -config.file=/etc/loki/config.yaml
+    volumes:
+      - /opt/loki/loki-config.yaml:/etc/loki/config.yaml
+    ports:
+      - "3100:3100"
+    restart_policy: always
+
+- name: Run Grafana container
+  docker_container:
+    name: grafana
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - /opt/grafana/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+    restart_policy: always

@@ -1,0 +1,8 @@
+- name: Pull and run InventoWare app container
+  docker_container:
+    name: inventoware-app
+    image: your-dockerhub-username/inventoware:latest
+    state: started
+    restart_policy: always
+    ports:
+      - "5000:5000"

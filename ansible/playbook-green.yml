@@ -1,0 +1,6 @@
+- name: Deploy Green Version of InventoWare App
+  hosts: green
+  become: true
+  roles:
+    - common
+    - deployment
