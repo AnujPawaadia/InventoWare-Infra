@@ -1,3 +1,46 @@
+# --- Providers and Data Sources ---
+provider "aws" {
+  region = var.region
+}
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+# --- Security Group ---
+resource "aws_security_group" "app_sg" {
+  name        = "app-sg"
+  description = "Allow SSH and app access"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 # --- Network Load Balancer (NLB) with EIP ---
 resource "aws_eip" "nlb_eip" {
   count  = length(data.aws_subnets.public.ids)
@@ -10,7 +53,6 @@ resource "aws_lb" "nlb" {
   load_balancer_type               = "network"
   enable_cross_zone_load_balancing = true
 
-  # ❗ Only use `subnet_mapping` OR `subnets`, not both. Here we use `subnet_mapping` with EIPs.
   dynamic "subnet_mapping" {
     for_each = data.aws_subnets.public.ids
     content {
@@ -63,8 +105,7 @@ resource "aws_lb_listener" "nlb_tcp_listener" {
   }
 }
 
-# ✅ Removed ASGs, replaced with fixed EC2 instances
-
+# ✅ Replaced ASGs with fixed EC2 instances
 resource "aws_instance" "blue_instance" {
   ami                         = "ami-0becc523130ac9d5d"
   instance_type               = "t3.medium"
@@ -128,6 +169,7 @@ sudo usermod -aG docker ubuntu
 EOF
 }
 
+# --- Outputs ---
 output "nlb_dns_name" {
   value = aws_lb.nlb.dns_name
 }
