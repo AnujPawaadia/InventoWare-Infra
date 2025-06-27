@@ -88,26 +88,6 @@ resource "aws_lb_target_group" "green_tg" {
   }
 }
 
-# --- Application Load Balancer (ALB) ---
-resource "aws_lb" "app_alb" {
-  name               = "inventoware-alb"
-  internal           = false
-  load_balancer_type = "application"
-  subnets            = data.aws_subnets.public.ids
-  security_groups    = [aws_security_group.app_sg.id]
-}
-
-resource "aws_lb_listener" "TCP" {
-  load_balancer_arn = aws_lb.app_alb.arn
-  port              = 80
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = var.deployment_color == "blue" ? aws_lb_target_group.blue_tg.arn : aws_lb_target_group.green_tg.arn
-  }
-}
-
 # --- Network Load Balancer (NLB) with EIP ---
 resource "aws_eip" "nlb_eip" {
   count  = length(data.aws_subnets.public.ids)
