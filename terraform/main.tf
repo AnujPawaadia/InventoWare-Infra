@@ -3,20 +3,36 @@ provider "aws" {
 }
 
 # ---------------------
+# Availability Zones
+# ---------------------
+data "aws_availability_zones" "available" {}
+
+# ---------------------
 # VPC & Networking
 # ---------------------
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
 
-resource "aws_subnet" "subnet" {
+resource "aws_subnet" "subnet_a" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
+  tags = {
+    Name = "subnet-a"
+  }
 }
 
-data "aws_availability_zones" "available" {}
+resource "aws_subnet" "subnet_b" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "subnet-b"
+  }
+}
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
@@ -33,7 +49,12 @@ resource "aws_route" "internet_access" {
 }
 
 resource "aws_route_table_association" "a" {
-  subnet_id      = aws_subnet.subnet.id
+  subnet_id      = aws_subnet.subnet_a.id
+  route_table_id = aws_route_table.rt.id
+}
+
+resource "aws_route_table_association" "b" {
+  subnet_id      = aws_subnet.subnet_b.id
   route_table_id = aws_route_table.rt.id
 }
 
@@ -70,14 +91,18 @@ resource "aws_security_group" "app_sg" {
 }
 
 # ---------------------
-# ALB
+# Application Load Balancer
 # ---------------------
 resource "aws_lb" "app_lb" {
   name               = "bluegreen-lb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.app_sg.id]
-  subnets            = [aws_subnet.subnet.id]
+  subnets            = [aws_subnet.subnet_a.id, aws_subnet.subnet_b.id]
+
+  tags = {
+    Name = "app-lb"
+  }
 }
 
 resource "aws_lb_target_group" "blue" {
@@ -85,6 +110,7 @@ resource "aws_lb_target_group" "blue" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
   health_check {
     path = "/"
   }
@@ -95,6 +121,7 @@ resource "aws_lb_target_group" "green" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
   health_check {
     path = "/"
   }
@@ -107,20 +134,21 @@ resource "aws_lb_listener" "app_listener" {
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.blue.arn # ← Start with Blue
+    target_group_arn = aws_lb_target_group.blue.arn
   }
 }
 
 # ---------------------
-# EC2 Instances (Blue & Green)
+# EC2 Instances
 # ---------------------
 resource "aws_instance" "blue_instance" {
   ami                         = var.ami_id
   instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet.id
+  subnet_id                   = aws_subnet.subnet_a.id
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
   key_name                    = var.key_name
+
   tags = {
     Name = "blue-instance"
   }
@@ -129,10 +157,11 @@ resource "aws_instance" "blue_instance" {
 resource "aws_instance" "green_instance" {
   ami                         = var.ami_id
   instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet.id
+  subnet_id                   = aws_subnet.subnet_b.id
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
   key_name                    = var.key_name
+
   tags = {
     Name = "green-instance"
   }
@@ -141,7 +170,7 @@ resource "aws_instance" "green_instance" {
 resource "aws_instance" "monitor_instance" {
   ami                         = var.ami_id
   instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet.id
+  subnet_id                   = aws_subnet.subnet_a.id
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
   key_name                    = var.key_name
@@ -170,7 +199,7 @@ resource "aws_eip" "monitor_eip" {
 }
 
 # ---------------------
-# Attach to ALB Target Groups
+# Attach EC2 to Target Groups
 # ---------------------
 resource "aws_lb_target_group_attachment" "blue_attach" {
   target_group_arn = aws_lb_target_group.blue.arn
