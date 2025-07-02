@@ -15,14 +15,10 @@ variable "key_name" {
   description = "Name of the AWS key pair"
 }
 
-variable "private_key_path" {
-  description = "Path to your PEM file"
-}
-
 variable "docker_image_blue" {
-  default = "yourdockerhub/image:blue"
+  default = "Arjuncodeops/image:blue"
 }
 
 variable "docker_image_green" {
-  default = "yourdockerhub/image:green"
+  default = "Arjuncodeop/image:green"
 }
