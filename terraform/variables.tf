@@ -12,8 +12,9 @@ variable "instance_type" {
 }
 
 variable "key_name" {
-  description = "Name of the AWS key pair"
+  default = "jenkins_invento"
 }
+
 
 variable "docker_image_blue" {
   default = "Arjuncodeops/image:blue"
