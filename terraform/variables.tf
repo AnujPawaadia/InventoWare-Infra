@@ -1,20 +1,28 @@
-# variables.tf
+variable "aws_region" {
+  default = "us-east-1"
+}
 
-variable "region" {
-  description = "AWS region to deploy resources in"
-  type        = string
-  default     = "eu-north-1"
+variable "ami_id" {
+  description = "Amazon Linux 2 AMI"
+  default     = "ami-0c2b8ca1dad447f8a" # Replace with your region's AMI
+}
+
+variable "instance_type" {
+  default = "t2.micro"
 }
 
 variable "key_name" {
-  description = "SSH key pair name for EC2 instances"
-  type        = string
+  description = "Name of the AWS key pair"
 }
 
-variable "deployment_color" {
-  description = "Which deployment should be active on the load balancer"
-  type        = string
-  default     = "blue"
+variable "private_key_path" {
+  description = "Path to your PEM file"
 }
 
+variable "docker_image_blue" {
+  default = "yourdockerhub/image:blue"
+}
 
+variable "docker_image_green" {
+  default = "yourdockerhub/image:green"
+}

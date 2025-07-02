@@ -1,6 +1,0 @@
-- name: Deploy Blue Version of InventoWare App
-  hosts: blue
-  become: true
-  roles:
-    - common
-    - deployment

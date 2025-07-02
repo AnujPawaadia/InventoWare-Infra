@@ -1,19 +1,19 @@
-# outputs.tf
-
-output "monitoring_instance_public_ip" {
-  description = "Public IP of the monitoring EC2 instance"
-  value       = aws_instance.monitoring_node.public_ip
+output "blue_instance_eip" {
+  description = "Elastic IP of the Blue instance"
+  value       = aws_eip.blue_eip.public_ip
 }
 
-output "nlb_eips" {
-  description = "EIP addresses attached to the NLB"
-  value = [
-    for eip in aws_eip.nlb_eip : eip.public_ip
-  ]
+output "green_instance_eip" {
+  description = "Elastic IP of the Green instance"
+  value       = aws_eip.green_eip.public_ip
 }
 
-output "monitoring_node_ip" {
-  description = "Public IP of the monitoring node"
-  value       = aws_instance.monitoring_node.public_ip
+output "monitor_instance_eip" {
+  description = "Elastic IP of the Monitor instance"
+  value       = aws_eip.monitor_eip.public_ip
 }
 
+output "load_balancer_dns" {
+  description = "DNS name of the Application Load Balancer"
+  value       = aws_lb.app_lb.dns_name
+}

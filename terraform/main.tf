@@ -1,34 +1,62 @@
-# --- Providers and Data Sources ---
 provider "aws" {
-  region = var.region
+  region = var.aws_region
 }
 
-data "aws_vpc" "default" {
-  default = true
+# ---------------------
+# VPC & Networking
+# ---------------------
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
 }
 
-data "aws_subnets" "public" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
+resource "aws_subnet" "subnet" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = true
 }
 
-# --- Security Group ---
+data "aws_availability_zones" "available" {}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_route_table" "rt" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_route" "internet_access" {
+  route_table_id         = aws_route_table.rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.subnet.id
+  route_table_id = aws_route_table.rt.id
+}
+
+# ---------------------
+# Security Group
+# ---------------------
 resource "aws_security_group" "app_sg" {
   name        = "app-sg"
-  description = "Allow SSH and app access"
+  description = "Allow HTTP and SSH"
+  vpc_id      = aws_vpc.main.id
 
   ingress {
-    from_port   = 22
-    to_port     = 22
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    from_port   = 5000
-    to_port     = 5000
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -41,147 +69,117 @@ resource "aws_security_group" "app_sg" {
   }
 }
 
-# --- Network Load Balancer (NLB) with EIP ---
-resource "aws_eip" "nlb_eip" {
-  count  = length(data.aws_subnets.public.ids)
-  domain = "vpc"
+# ---------------------
+# ALB
+# ---------------------
+resource "aws_lb" "app_lb" {
+  name               = "bluegreen-lb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.app_sg.id]
+  subnets            = [aws_subnet.subnet.id]
 }
 
-resource "aws_lb" "nlb" {
-  name                             = "inventoware-nlb"
-  internal                         = false
-  load_balancer_type               = "network"
-  enable_cross_zone_load_balancing = true
-
-  dynamic "subnet_mapping" {
-    for_each = data.aws_subnets.public.ids
-    content {
-      subnet_id     = subnet_mapping.value
-      allocation_id = aws_eip.nlb_eip[subnet_mapping.key].id
-    }
-  }
-}
-
-# --- Target Groups ---
-resource "aws_lb_target_group" "blue_tg" {
-  name        = "inventoware-blue-tg"
-  port        = 5000
-  protocol    = "TCP"
-  vpc_id      = data.aws_vpc.default.id
-  target_type = "instance"
-
+resource "aws_lb_target_group" "blue" {
+  name     = "blue-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
   health_check {
-    port     = "5000"
-    protocol = "TCP"
+    path = "/"
   }
 }
 
-resource "aws_lb_target_group" "green_tg" {
-  name        = "inventoware-green-tg"
-  port        = 5000
-  protocol    = "TCP"
-  vpc_id      = data.aws_vpc.default.id
-  target_type = "instance"
-
+resource "aws_lb_target_group" "green" {
+  name     = "green-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
   health_check {
-    port     = "5000"
-    protocol = "TCP"
+    path = "/"
   }
 }
 
-# --- NLB Listener (TCP Forwarding to Blue/Green Target Group) ---
-locals {
-  selected_tg = var.deployment_color == "blue" ? aws_lb_target_group.blue_tg.arn : aws_lb_target_group.green_tg.arn
-}
-
-resource "aws_lb_listener" "nlb_tcp_listener" {
-  load_balancer_arn = aws_lb.nlb.arn
-  port              = 5000
-  protocol          = "TCP"
+resource "aws_lb_listener" "app_listener" {
+  load_balancer_arn = aws_lb.app_lb.arn
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = local.selected_tg
+    target_group_arn = aws_lb_target_group.blue.arn # ← Start with Blue
   }
 }
 
-# ✅ Replaced ASGs with fixed EC2 instances
+# ---------------------
+# EC2 Instances (Blue & Green)
+# ---------------------
 resource "aws_instance" "blue_instance" {
-  ami                         = "ami-0becc523130ac9d5d"
-  instance_type               = "t3.medium"
-  key_name                    = var.key_name
-  subnet_id                   = data.aws_subnets.public.ids[0]
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.subnet.id
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
-
+  key_name                    = var.key_name
   tags = {
-    Name = "InventoWare-Deployment-Blue"
+    Name = "blue-instance"
   }
-
-  user_data = <<EOF
-#!/bin/bash
-sudo apt-get update -y
-sudo apt-get install docker.io -y
-sudo systemctl enable --now docker
-sudo usermod -aG docker ubuntu
-EOF
 }
 
 resource "aws_instance" "green_instance" {
-  ami                         = "ami-0becc523130ac9d5d"
-  instance_type               = "t3.medium"
-  key_name                    = var.key_name
-  subnet_id                   = data.aws_subnets.public.ids[1]
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.subnet.id
   vpc_security_group_ids      = [aws_security_group.app_sg.id]
   associate_public_ip_address = true
+  key_name                    = var.key_name
+  tags = {
+    Name = "green-instance"
+  }
+}
+
+resource "aws_instance" "monitor_instance" {
+  ami                         = var.ami_id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.subnet.id
+  vpc_security_group_ids      = [aws_security_group.app_sg.id]
+  associate_public_ip_address = true
+  key_name                    = var.key_name
 
   tags = {
-    Name = "InventoWare-Deployment-Green"
+    Name = "monitor-instance"
   }
-
-  user_data = <<EOF
-#!/bin/bash
-sudo apt-get update -y
-sudo apt-get install docker.io -y
-sudo systemctl enable --now docker
-sudo usermod -aG docker ubuntu
-EOF
 }
 
-# --- Monitoring Node ---
-resource "aws_instance" "monitoring_node" {
-  ami                    = "ami-0becc523130ac9d5d"
-  instance_type          = "t3.medium"
-  key_name               = var.key_name
-  subnet_id              = data.aws_subnets.public.ids[2]
-  vpc_security_group_ids = [aws_security_group.app_sg.id]
-
-  tags = {
-    Name = "InventoWare-Monitoring"
-  }
-
-  user_data = <<EOF
-#!/bin/bash
-sudo apt-get update -y
-sudo apt-get install docker.io -y
-sudo systemctl enable --now docker
-sudo usermod -aG docker ubuntu
-EOF
+# ---------------------
+# Elastic IPs
+# ---------------------
+resource "aws_eip" "blue_eip" {
+  instance   = aws_instance.blue_instance.id
+  depends_on = [aws_internet_gateway.igw]
 }
 
-# --- Outputs ---
-output "nlb_dns_name" {
-  value = aws_lb.nlb.dns_name
+resource "aws_eip" "green_eip" {
+  instance   = aws_instance.green_instance.id
+  depends_on = [aws_internet_gateway.igw]
 }
 
-output "blue_ip" {
-  value = aws_instance.blue_instance.public_ip
+resource "aws_eip" "monitor_eip" {
+  instance   = aws_instance.monitor_instance.id
+  depends_on = [aws_internet_gateway.igw]
 }
 
-output "green_ip" {
-  value = aws_instance.green_instance.public_ip
+# ---------------------
+# Attach to ALB Target Groups
+# ---------------------
+resource "aws_lb_target_group_attachment" "blue_attach" {
+  target_group_arn = aws_lb_target_group.blue.arn
+  target_id        = aws_instance.blue_instance.id
+  port             = 80
 }
 
-output "monitoring_ip" {
-  value = aws_instance.monitoring_node.public_ip
+resource "aws_lb_target_group_attachment" "green_attach" {
+  target_group_arn = aws_lb_target_group.green.arn
+  target_id        = aws_instance.green_instance.id
+  port             = 80
 }
