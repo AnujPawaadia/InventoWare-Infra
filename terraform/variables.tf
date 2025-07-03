@@ -12,5 +12,5 @@ variable "instance_type" {
 }
 
 variable "key_name" {
-  default = "invento_jenkins"
+  default = "jenkins_invento"
 }
