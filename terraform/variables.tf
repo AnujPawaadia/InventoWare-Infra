@@ -4,7 +4,7 @@ variable "aws_region" {
 
 variable "ami_id" {
   description = "Amazon Linux 2 AMI"
-  default     = "ami-0c2b8ca1dad447f8a" # Replace with your region's AMI
+  default     = "ami-0c2b8ca1dad447f8a" # Replace with your region-specific AMI
 }
 
 variable "instance_type" {
@@ -13,13 +13,4 @@ variable "instance_type" {
 
 variable "key_name" {
   default = "jenkins_invento"
-}
-
-
-variable "docker_image_blue" {
-  default = "Arjuncodeops/image:blue"
-}
-
-variable "docker_image_green" {
-  default = "Arjuncodeop/image:green"
 }
