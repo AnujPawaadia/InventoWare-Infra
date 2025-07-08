@@ -51,7 +51,7 @@ module "target_groups" {
 }
 
 
-module 
+
 module "alb_listener" {
   source                = "./modules/alb_listener"
   alb_arn               = module.alb.alb_arn
