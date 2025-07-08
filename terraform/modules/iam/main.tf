@@ -39,7 +39,6 @@ resource "aws_iam_policy" "ssm_policy" {
   })
 }
 
-
 resource "aws_iam_role_policy_attachment" "attach_ssm" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.ssm_policy.arn

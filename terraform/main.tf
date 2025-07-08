@@ -6,12 +6,14 @@ module "vpc" {
   private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
   azs                  = ["eu-north-1a", "eu-north-1b"]
 }
+
 module "security_groups" {
   source               = "./modules/security_groups"
   project              = var.project
   vpc_id               = module.vpc.vpc_id
   bastion_allowed_cidr = var.bastion_allowed_cidr
 }
+
 module "alb" {
   source            = "./modules/alb"
   project           = var.project
@@ -32,25 +34,26 @@ module "asg" {
   private_subnet_ids = module.vpc.private_subnet_ids
   blue_tg_arn        = module.target_groups.blue_target_group_arn
   green_tg_arn       = module.target_groups.green_target_group_arn
-  azs                = var.azs # <-- add this line
+  azs                = var.azs
 }
+
 module "iam" {
   source  = "./modules/iam"
   project = var.project
 }
+
 module "cloudwatch" {
-  source  = "./modules/cloudwatch"
-  project = var.project
+  source      = "./modules/cloudwatch"
+  project     = var.project
   aws_region  = var.aws_region
 }
+
 module "target_groups" {
   source   = "./modules/target_groups"
   project  = var.project
   vpc_id   = module.vpc.vpc_id
   app_port = var.app_port
 }
-
-
 
 module "alb_listener" {
   source                = "./modules/alb_listener"
@@ -67,4 +70,3 @@ module "bastion_host" {
   public_subnet_id = module.vpc.public_subnet_ids[0]
   bastion_sg_id    = module.security_groups.bastion_sg_id
 }
-
