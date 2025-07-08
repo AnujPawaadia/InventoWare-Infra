@@ -1,138 +1,70 @@
-provider "aws" {
-  region = var.aws_region
+module "vpc" {
+  source               = "./modules/vpc"
+  project              = var.project
+  vpc_cidr             = "10.0.0.0/16"
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+  azs                  = ["eu-north-1a", "eu-north-1b"]
+}
+module "security_groups" {
+  source               = "./modules/security_groups"
+  project              = var.project
+  vpc_id               = module.vpc.vpc_id
+  bastion_allowed_cidr = var.bastion_allowed_cidr
+}
+module "alb" {
+  source            = "./modules/alb"
+  project           = var.project
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+  alb_sg_id         = module.security_groups.alb_sg_id
+  app_port          = var.app_port
 }
 
-data "aws_availability_zones" "available" {}
-
-# ---------------------
-# VPC & Networking
-# ---------------------
-resource "aws_vpc" "main" {
-  cidr_block = "10.0.0.0/16"
+module "asg" {
+  source             = "./modules/asg"
+  project            = var.project
+  ami_id             = var.ami_id
+  instance_type      = var.instance_type
+  key_name           = var.key_name
+  instance_profile   = module.iam.instance_profile_name
+  instance_sg_id     = module.security_groups.instance_sg_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  blue_tg_arn        = module.target_groups.blue_target_group_arn
+  green_tg_arn       = module.target_groups.green_target_group_arn
+  azs                = var.azs # <-- add this line
+}
+module "iam" {
+  source  = "./modules/iam"
+  project = var.project
+}
+module "cloudwatch" {
+  source  = "./modules/cloudwatch"
+  project = var.project
+  aws_region  = var.aws_region
+}
+module "target_groups" {
+  source   = "./modules/target_groups"
+  project  = var.project
+  vpc_id   = module.vpc.vpc_id
+  app_port = var.app_port
 }
 
-resource "aws_subnet" "subnet_a" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.101.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
-  tags                    = { Name = "subnet-a" }
+
+module 
+module "alb_listener" {
+  source                = "./modules/alb_listener"
+  alb_arn               = module.alb.alb_arn
+  blue_target_group_arn = module.target_groups.blue_target_group_arn
 }
 
-resource "aws_subnet" "subnet_b" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.102.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[1]
-  map_public_ip_on_launch = true
-  tags                    = { Name = "subnet-b" }
+module "bastion_host" {
+  source           = "./modules/bastion_host"
+  project          = var.project
+  ami_id           = var.ami_id
+  instance_type    = var.instance_type
+  key_name         = var.key_name
+  public_subnet_id = module.vpc.public_subnet_ids[0]
+  bastion_sg_id    = module.security_groups.bastion_sg_id
 }
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-}
-
-resource "aws_route_table" "rt" {
-  vpc_id = aws_vpc.main.id
-}
-
-resource "aws_route" "internet_access" {
-  route_table_id         = aws_route_table.rt.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.igw.id
-}
-
-resource "aws_route_table_association" "a" {
-  subnet_id      = aws_subnet.subnet_a.id
-  route_table_id = aws_route_table.rt.id
-}
-
-resource "aws_route_table_association" "b" {
-  subnet_id      = aws_subnet.subnet_b.id
-  route_table_id = aws_route_table.rt.id
-}
-
-# ---------------------
-# Security Group
-# ---------------------
-resource "aws_security_group" "app_sg" {
-  name        = "app-sg"
-  description = "Allow HTTP and SSH"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-# ---------------------
-# EC2 Instances
-# ---------------------
-resource "aws_instance" "blue_instance" {
-  ami                         = var.ami_id
-  instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet_a.id
-  vpc_security_group_ids      = [aws_security_group.app_sg.id]
-  associate_public_ip_address = true
-  key_name                    = var.key_name
-
-  tags = { Name = "blue-instance" }
-}
-
-resource "aws_instance" "green_instance" {
-  ami                         = var.ami_id
-  instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet_b.id
-  vpc_security_group_ids      = [aws_security_group.app_sg.id]
-  associate_public_ip_address = true
-  key_name                    = var.key_name
-
-  tags = { Name = "green-instance" }
-}
-
-resource "aws_instance" "monitor_instance" {
-  ami                         = var.ami_id
-  instance_type               = var.instance_type
-  subnet_id                   = aws_subnet.subnet_a.id
-  vpc_security_group_ids      = [aws_security_group.app_sg.id]
-  associate_public_ip_address = true
-  key_name                    = var.key_name
-
-  tags = { Name = "monitor-instance" }
-}
-
-# ---------------------
-# Elastic IPs (Static IPs)
-# ---------------------
-resource "aws_eip" "blue_eip" {
-  instance   = aws_instance.blue_instance.id
-  depends_on = [aws_internet_gateway.igw]
-}
-
-resource "aws_eip" "green_eip" {
-  instance   = aws_instance.green_instance.id
-  depends_on = [aws_internet_gateway.igw]
-}
-
-resource "aws_eip" "monitor_eip" {
-  instance   = aws_instance.monitor_instance.id
-  depends_on = [aws_internet_gateway.igw]
-}
