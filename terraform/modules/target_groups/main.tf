@@ -1,6 +1,6 @@
 resource "aws_lb_target_group" "blue" {
   name     = "${var.project}-tg-blue"
-  port     = 5000
+  port     = 80
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
@@ -21,7 +21,7 @@ resource "aws_lb_target_group" "blue" {
 
 resource "aws_lb_target_group" "green" {
   name     = "${var.project}-tg-green"
-  port     = 5000
+  port     = 80
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
