@@ -41,19 +41,20 @@ resource "aws_launch_template" "green" {
 }
 
 resource "aws_autoscaling_group" "blue_asg" {
-  name                = "${var.project}-blue-asg"
-  desired_capacity    = 1
-  max_size            = 1
-  min_size            = 1
-  vpc_zone_identifier = var.private_subnet_ids
-
+  name                      = "${var.project}-blue-asg"
+  desired_capacity          = 1
+  max_size                  = 1
+  min_size                  = 1
+  vpc_zone_identifier       = var.private_subnet_ids
+  health_check_type         = "EC2"
+  health_check_grace_period = 0
+  capacity_rebalance        = false
+  termination_policies      = ["OldestLaunchConfiguration"]
 
   launch_template {
     id      = aws_launch_template.blue.id
     version = "$Latest"
   }
-
-  target_group_arns = [var.blue_tg_arn]
 
   tag {
     key                 = "Name"
@@ -62,21 +63,21 @@ resource "aws_autoscaling_group" "blue_asg" {
   }
 }
 
-
 resource "aws_autoscaling_group" "green_asg" {
-  name                = "${var.project}-green-asg"
-  desired_capacity    = 1
-  max_size            = 1
-  min_size            = 1
-  vpc_zone_identifier = var.private_subnet_ids
-
+  name                      = "${var.project}-green-asg"
+  desired_capacity          = 1
+  max_size                  = 1
+  min_size                  = 1
+  vpc_zone_identifier       = var.private_subnet_ids
+  health_check_type         = "EC2"
+  health_check_grace_period = 0
+  capacity_rebalance        = false
+  termination_policies      = ["OldestLaunchConfiguration"]
 
   launch_template {
     id      = aws_launch_template.green.id
     version = "$Latest"
   }
-
-  target_group_arns = [var.green_tg_arn]
 
   tag {
     key                 = "Name"
